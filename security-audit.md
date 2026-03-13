@@ -8,16 +8,14 @@
 
 ## CRITICAL
 
-### CRIT-1 — Hardcoded database credentials in source control
+### ~~CRIT-1~~ RESOLVED — Hardcoded database credentials in source control
 **Files:**
-- `ALGSIntel/includes/database.php` — **RESOLVED** (reads from `DB_USER`/`DB_PASS` env vars, fails hard if absent)
-- `CC/includes/database.php` lines 17-19
-- `Pro-League/includes/database.php` lines 17-19
-- `Qualifiers/includes/database.php` lines 17-19
+- `ALGSIntel/includes/database.php` — RESOLVED
+- `CC/includes/database.php` — RESOLVED
+- `Pro-League/includes/database.php` — RESOLVED
+- `Qualifiers/includes/database.php` — RESOLVED
 
-**Issue:** Username `Dad_Is_Bored` and password `boredisdad` are hardcoded in plain text. The same credential pair is shared across all four databases. Anyone with repository access has full database access.
-
-**Required fix:** Remove the hardcoded values. Read credentials from environment variables (`DB_USER`, `DB_PASS`) set in the server's Apache `VirtualHost` config (`SetEnv`) or PHP-FPM pool config. Fail hard at boot if the env vars are not set rather than falling back to plaintext.
+All four files now read credentials from `DB_USER`/`DB_PASS` environment variables (with `DB_HOST`/`DB_NAME` also env-configurable). Server returns 500 and exits if the vars are absent. The credentials `Dad_Is_Bored`/`boredisdad` should be changed on the server, and `SetEnv DB_USER` / `SetEnv DB_PASS` directives added to each VirtualHost config.
 
 ---
 
@@ -44,11 +42,11 @@ Fixed. All five Delete button inline handlers now use `json_encode()` instead of
 
 ---
 
-### HIGH-2 — XSS via `addslashes(htmlspecialchars())` in inline JS (profile pages)
+### ~~HIGH-2~~ RESOLVED — XSS via `addslashes(htmlspecialchars())` in inline JS (profile pages)
 **Files:**
-- `CC/profile.php` line 645
-- `Pro-League/profile.php` line 635
-- `Qualifiers/profile.php` line 634
+- `CC/profile.php` (was line 645)
+- `Pro-League/profile.php` (was line 635)
+- `Qualifiers/profile.php` (was line 634)
 
 **Issue:** Player name from the database is embedded into a JavaScript string literal using `addslashes(htmlspecialchars())`:
 
@@ -128,11 +126,11 @@ Fixed. PDO catch block now echoes `Service temporarily unavailable.` in all four
 
 | ID | Severity | File(s) | Issue |
 |----|----------|---------|-------|
-| CRIT-1 | Critical (3 remain) | 4x `includes/database.php` | Hardcoded DB credentials — ALGSIntel resolved, CC/PL/Q pending |
+| CRIT-1 | ~~Critical~~ RESOLVED | 4x `includes/database.php` | Hardcoded DB credentials |
 | CRIT-2 | ~~Critical~~ RESOLVED | `ALGSIntel/admin/discord-config.php` | Hardcoded OAuth secret — rotate secret in Discord portal |
 | CRIT-3 | ~~Critical~~ RESOLVED | `ALGSIntel/admin/discord-callback.php` | Session fixation |
 | HIGH-1 | ~~High~~ RESOLVED | `ALGSIntel/admin/dashboard.php` | XSS via `addslashes()` in JS event handler |
-| HIGH-2 | High | 3x `profile.php` | XSS via `addslashes(htmlspecialchars())` in JS string |
+| HIGH-2 | ~~High~~ RESOLVED | 3x `profile.php` | XSS via `addslashes(htmlspecialchars())` in JS string |
 | HIGH-3 | ~~High~~ RESOLVED | `ALGSIntel/admin/dashboard.php` + `api.php` | No CSRF protection on delete |
 | HIGH-4 | ~~High~~ RESOLVED | `ALGSIntel/admin/api.php` | No URL scheme validation on `tweetLink` |
 | MED-1 | ~~Medium~~ RESOLVED | `CC/`, `Pro-League/`, `Qualifiers/`, `ALGSIntel/` `.htaccess` | Missing security headers |
