@@ -10,7 +10,7 @@
 
 ### CRIT-1 — Hardcoded database credentials in source control
 **Files:**
-- `ALGSIntel/includes/database.php` lines 17-19
+- `ALGSIntel/includes/database.php` — **RESOLVED** (reads from `DB_USER`/`DB_PASS` env vars, fails hard if absent)
 - `CC/includes/database.php` lines 17-19
 - `Pro-League/includes/database.php` lines 17-19
 - `Qualifiers/includes/database.php` lines 17-19
@@ -21,48 +21,26 @@
 
 ---
 
-### CRIT-2 — Discord OAuth client secret hardcoded in source control
-**File:** `ALGSIntel/admin/discord-config.php` lines 15-16
+### CRIT-2 — ~~Discord OAuth client secret hardcoded in source control~~ RESOLVED
+**File:** `ALGSIntel/admin/discord-config.php`
 
-**Issue:** `DISCORD_CLIENT_SECRET` has a hardcoded fallback value (`5UFr5XvZECgRbwhCt_PXymJNPpQmYU_P`). If `$_ENV['DISCORD_CLIENT_SECRET']` is not set, the real secret is used. Anyone with repository access can impersonate the Discord OAuth application, forge OAuth flows, and gain admin access to the LFT dashboard.
-
-```php
-// current — falls back to the real secret
-define('DISCORD_CLIENT_SECRET', $_ENV['DISCORD_CLIENT_SECRET'] ?? '5UFr5XvZECgRbwhCt_PXymJNPpQmYU_P');
-```
-
-**Required fix:** Remove the hardcoded fallback entirely. Fail hard if the env var is absent. Rotate the secret in the Discord Developer Portal immediately — it has already been committed and must be considered compromised.
+Fixed. Hardcoded fallback values removed. Credentials are now read exclusively from `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` environment variables. Server will return 500 and refuse to start if either is absent. The exposed secret must still be rotated in the Discord Developer Portal.
 
 ---
 
-### CRIT-3 — Session fixation on admin login
-**File:** `ALGSIntel/admin/discord-callback.php` around line 46
+### CRIT-3 — ~~Session fixation on admin login~~ RESOLVED
+**File:** `ALGSIntel/admin/discord-callback.php`
 
-**Issue:** After a successful OAuth authentication, the session is marked as authenticated (`$_SESSION['lft_admin_logged_in'] = true`) but `session_regenerate_id(true)` is never called. An attacker who can fix a victim's session ID before login retains that session ID and inherits the admin session post-login.
-
-**Required fix:** Call `session_regenerate_id(true)` immediately before writing any `$_SESSION` values on successful login.
+Fixed. `session_regenerate_id(true)` is now called before any session variables are written on successful authentication.
 
 ---
 
 ## HIGH
 
-### HIGH-1 — XSS via `addslashes()` in inline JS event handlers (dashboard)
-**File:** `ALGSIntel/admin/dashboard.php` lines 435, 496, 572, 635, 700
+### HIGH-1 — ~~XSS via `addslashes()` in inline JS event handlers (dashboard)~~ RESOLVED
+**File:** `ALGSIntel/admin/dashboard.php`
 
-**Issue:** All five Delete buttons use `addslashes()` to embed database values into a JS string literal inside an HTML `onclick` attribute:
-
-```php
-onclick="confirmDelete('coach', <?= $coach['id'] ?>, '<?= addslashes($coach['name']) ?>')"
-```
-
-`addslashes()` only escapes `'`, `"`, `\`, and NUL. It does not prevent HTML injection. A name value containing `</button><script>alert(1)</script>` would break out of the attribute context. Although input is stored by an admin, it is still a stored XSS vector.
-
-**Required fix:** Replace `addslashes($x)` with `json_encode($x)` (no surrounding quotes — `json_encode` adds them). This correctly handles all JavaScript string escaping in all contexts.
-
-```php
-// correct
-onclick="confirmDelete('coach', <?= $coach['id'] ?>, <?= json_encode($coach['name']) ?>)"
-```
+Fixed. All five Delete button inline handlers now use `json_encode()` instead of `addslashes()` for correct JS string escaping.
 
 ---
 
@@ -88,31 +66,17 @@ link.download = <?= json_encode($playerName . '-profile.png') ?>;
 
 ---
 
-### HIGH-3 — No CSRF protection on admin delete action
-**Files:** `ALGSIntel/admin/dashboard.php` (delete buttons), `ALGSIntel/admin/api.php` (delete case)
+### HIGH-3 — ~~No CSRF protection on admin delete action~~ RESOLVED
+**Files:** `ALGSIntel/admin/dashboard.php`, `ALGSIntel/admin/api.php`
 
-**Issue:** Delete is triggered via a plain GET request: `api.php?action=delete&type=coach&id=1`. There is no CSRF token. Any page the admin visits while authenticated can silently issue this GET request and delete entries.
-
-```php
-// dashboard.php — no token in the URL
-window.location.href = `api.php?action=delete&type=${type}&id=${id}`;
-
-// api.php — no token verified
-case 'delete':
-    $id = (int) ($_GET['id'] ?? 0);
-    // proceeds directly to deletion
-```
-
-**Required fix:** Generate a CSRF token on session start, store it in `$_SESSION['csrf_token']`, include it as a hidden field in all forms and as a query parameter in delete links, and verify it server-side before any state-changing action.
+Fixed. A per-session CSRF token (`bin2hex(random_bytes(32))`) is generated in `dashboard.php` on first load and stored in `$_SESSION['csrf_token']`. It is appended to every delete URL and verified server-side in `api.php` using `hash_equals()` before any deletion proceeds.
 
 ---
 
-### HIGH-4 — `tweetLink` field accepts any URL scheme (stored XSS / javascript: URI)
-**Files:** `ALGSIntel/admin/api.php` (add and edit cases), `ALGSIntel/includes/lft-data.php`
+### HIGH-4 — ~~`tweetLink` field accepts any URL scheme (stored XSS / javascript: URI)~~ RESOLVED
+**File:** `ALGSIntel/admin/api.php`
 
-**Issue:** The `tweetLink` field accepts any string. There is no server-side validation that the value is an `http://` or `https://` URL before storage. The output in both `ALGSIntel/index.php` and `ALGSIntel/admin/dashboard.php` renders it as an `<a href="...">` only if `preg_match('/^https?:\/\//i', ...)` passes, but this check is applied at render time, not at write time. A non-HTTP value can be stored and then if the render-time check is ever removed or bypassed, a `javascript:` URI could execute.
-
-**Required fix:** Validate that `tweetLink` matches `^https?://` in `api.php` before passing it to the data layer, and reject the request if it does not.
+Fixed. Both the `add` and `edit` cases now validate that `tweetLink` matches `^https?://` before passing it to the data layer. Any non-HTTP value is rejected with an error redirect.
 
 ---
 
@@ -164,13 +128,13 @@ Fixed. PDO catch block now echoes `Service temporarily unavailable.` in all four
 
 | ID | Severity | File(s) | Issue |
 |----|----------|---------|-------|
-| CRIT-1 | Critical | 4x `includes/database.php` | Hardcoded DB credentials |
-| CRIT-2 | Critical | `ALGSIntel/admin/discord-config.php` | Hardcoded OAuth secret with fallback |
-| CRIT-3 | Critical | `ALGSIntel/admin/discord-callback.php` | Session fixation — no `session_regenerate_id()` |
-| HIGH-1 | High | `ALGSIntel/admin/dashboard.php` | XSS via `addslashes()` in JS event handler (5 instances) |
+| CRIT-1 | Critical (3 remain) | 4x `includes/database.php` | Hardcoded DB credentials — ALGSIntel resolved, CC/PL/Q pending |
+| CRIT-2 | ~~Critical~~ RESOLVED | `ALGSIntel/admin/discord-config.php` | Hardcoded OAuth secret — rotate secret in Discord portal |
+| CRIT-3 | ~~Critical~~ RESOLVED | `ALGSIntel/admin/discord-callback.php` | Session fixation |
+| HIGH-1 | ~~High~~ RESOLVED | `ALGSIntel/admin/dashboard.php` | XSS via `addslashes()` in JS event handler |
 | HIGH-2 | High | 3x `profile.php` | XSS via `addslashes(htmlspecialchars())` in JS string |
-| HIGH-3 | High | `ALGSIntel/admin/dashboard.php` + `api.php` | No CSRF protection on delete |
-| HIGH-4 | High | `ALGSIntel/admin/api.php` | No URL scheme validation on `tweetLink` |
+| HIGH-3 | ~~High~~ RESOLVED | `ALGSIntel/admin/dashboard.php` + `api.php` | No CSRF protection on delete |
+| HIGH-4 | ~~High~~ RESOLVED | `ALGSIntel/admin/api.php` | No URL scheme validation on `tweetLink` |
 | MED-1 | ~~Medium~~ RESOLVED | `CC/`, `Pro-League/`, `Qualifiers/`, `ALGSIntel/` `.htaccess` | Missing security headers |
 | MED-2 | ~~Medium~~ RESOLVED | `ALGSIntel/admin/discord-callback.php` | OAuth access token stored in session unnecessarily |
 | MED-3 | ~~Medium~~ DISMISSED | 4x `.sql` files | Private repo — non-issue |
